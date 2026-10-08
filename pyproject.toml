@@ -1,0 +1,34 @@
+[project]
+name = "cna-simulator"
+version = "0.1.0"
+description = "Cloud Native Airlines Simulator — owns simulated time and (later) delivers ticks to the fleet."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.29",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  # Starlette >=1.7 TestClient prefers httpx2; plain httpx triggers a
+  # deprecation warning.
+  "httpx2>=2.13",
+]
+
+[project.scripts]
+cna-simulator = "simulator.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+simulator = ["static/*.html"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

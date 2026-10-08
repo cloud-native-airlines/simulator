@@ -1,0 +1,4 @@
+# Runtime dependencies. For development extras (pytest, httpx) install the
+# package with the "dev" extra instead:  pip install -e ".[dev]"
+fastapi>=0.110
+uvicorn[standard]>=0.29
