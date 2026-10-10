@@ -16,6 +16,8 @@ def make_client() -> TestClient:
         scenario_path=None,
         host="127.0.0.1",
         port=8000,
+        nats_url=None,
+        tick_subject="cna.sim.tick",
     )
     return TestClient(create_app(config))
 

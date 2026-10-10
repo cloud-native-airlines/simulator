@@ -28,6 +28,8 @@ class Config:
     scenario_path: str | None
     host: str
     port: int
+    nats_url: str | None
+    tick_subject: str
 
 
 def _parse_rfc3339(value: str) -> datetime:
@@ -77,4 +79,6 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         scenario_path=scenario_path,
         host=env.get("SIM_HOST", "0.0.0.0"),
         port=int(env.get("SIM_PORT", "8000")),
+        nats_url=env.get("NATS_URL") or None,
+        tick_subject=env.get("SIM_TICK_SUBJECT", "cna.sim.tick"),
     )

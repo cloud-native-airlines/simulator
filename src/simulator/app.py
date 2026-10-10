@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from .clock import Clock
 from .config import Config, _generate_run_id, load_config
 from .logging_config import configure_logging
+from .transport import TickTransport, build_transport
 
 logger = logging.getLogger("simulator")
 
@@ -26,13 +27,13 @@ class ClockUpdate(BaseModel):
     tick_interval: float | None = Field(default=None, gt=0)
 
 
-async def _tick_loop(clock: Clock) -> None:
+async def _tick_loop(clock: Clock, transport: TickTransport) -> None:
     """Emit a tick every ``tick_interval`` real seconds while running.
 
     The loop reads the (live-mutable) interval and paused state each iteration,
-    so control-API changes take effect on the next tick without a restart. In
-    Phase 1 a tick just advances the sequence number and logs; Phase 2 will
-    publish it to the broker here.
+    so control-API changes take effect on the next tick without a restart. Each
+    tick advances the sequence number, is logged, and is published to the
+    transport (a no-op when no broker is configured).
     """
     logger.info("tick loop started", extra={"run_id": clock.run_id})
     try:
@@ -40,14 +41,25 @@ async def _tick_loop(clock: Clock) -> None:
             interval = clock.tick_interval
             if not clock.paused:
                 tick_id = clock.advance_tick()
+                snap = clock.snapshot()
                 logger.info(
                     "tick",
                     extra={
-                        "run_id": clock.run_id,
+                        "run_id": snap["run_id"],
                         "tick_id": tick_id,
-                        "simulated_at": clock.snapshot()["simulated_at"],
-                        "speed": clock.speed,
+                        "simulated_at": snap["simulated_at"],
+                        "speed": snap["speed"],
                     },
+                )
+                await transport.publish(
+                    {
+                        "run_id": snap["run_id"],
+                        "tick_id": tick_id,
+                        "simulated_at": snap["simulated_at"],
+                        "paused": snap["paused"],
+                        "speed": snap["speed"],
+                        "tick_interval_s": snap["tick_interval"],
+                    }
                 )
             await asyncio.sleep(max(interval, 0.01))
     except asyncio.CancelledError:
@@ -64,6 +76,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         tick_interval=config.tick_interval,
         start_paused=config.start_paused,
     )
+    transport = build_transport(config.nats_url, config.tick_subject)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -75,9 +88,12 @@ def create_app(config: Config | None = None) -> FastAPI:
                 "speed": clock.speed,
                 "tick_interval": clock.tick_interval,
                 "paused": clock.paused,
+                "nats_url": config.nats_url,
+                "tick_subject": config.tick_subject,
             },
         )
-        task = asyncio.create_task(_tick_loop(clock))
+        await transport.start()
+        task = asyncio.create_task(_tick_loop(clock, transport))
         try:
             yield
         finally:
@@ -86,6 +102,7 @@ def create_app(config: Config | None = None) -> FastAPI:
                 await task
             except asyncio.CancelledError:
                 pass
+            await transport.close()
 
     app = FastAPI(title="Cloud Native Airlines Simulator", lifespan=lifespan)
     app.state.clock = clock
